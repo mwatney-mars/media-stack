@@ -1,113 +1,81 @@
-version: "3.9"
+version: "1.0"
 name: media-stack
 services:
-  vpn:
-  ## Read https://github.com/qdm12/gluetun/wiki for details on configuring VPN for different service providers.
-    profiles: ["vpn", "stack-2"]
-    container_name: vpn
-    image: qmcgaw/gluetun
-    cap_add:
+  surfshark:
+    image: ilteoood/docker-surfshark
+    container_name: surfshark
+    environment: 
+      - SURFSHARK_USER=exzSesh8r2z4GHBEdVW3VU7W
+      - SURFSHARK_PASSWORD=rXXzzUAQtdTzk52qsvWgza7Q
+      - SURFSHARK_COUNTRY=
+      - SURFSHARK_CITY=
+      - CONNECTION_TYPE=udp
+      - LAN_NETWORK=10.0.1.0/24
+    networks:
+      - mynetwork    
+    cap_add: 
       - NET_ADMIN
-    environment:
-      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-nordvpn} # Valid values: nordvpn, expressvpn, protonvpn, surfshark or custom
-      - OPENVPN_USER=${OPENVPN_USER:-""}
-      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD:-""}
-
-      ## For list of server regions and countries, visit https://raw.githubusercontent.com/qdm12/gluetun/master/internal/storage/servers.json
-
-      ## SERVER_REGIONS is required for NordVPN and Surfshark VPN. Comment SERVER_COUNTRIES if SERVER_REGIONS is used.
-      - SERVER_REGIONS=${SERVER_REGIONS:-Switzerland}
-    
-      ## SERVER_COUNTRIES is required for ExpressVPN and ProtonVPN. Comment SERVER_REGIONS if SERVER_COUNTRIES is used.
-      # - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Netherlands}
-      # - FREE_ONLY=on  # Valid with protonvpn only. on if using free service provided by protonvpn
-
-      ## Enable below if VPN_SERVICE_PROVIDER=custom
-      # - VPN_TYPE=openvpn # or wiregiuard. 
-
-      ## If VPN_TYPE is openvpn
-      # - OPENVPN_CUSTOM_CONFIG=/gluetun/custom.conf
-
-      ## If VPN_TYPE is wireguard. Replace below env variables as required.
-      # - VPN_ENDPOINT_IP=1.2.3.4                                               # Replace with your wg endpoint ip or domain
-      # - VPN_ENDPOINT_PORT=51820                                               # Replace with wg server port
-      # - WIREGUARD_PUBLIC_KEY=wAUaJMhAq3NFutLHIdF8AN0B5WG8RndfQKLPTEDHal0=     # Replace with your wg public key
-      # - WIREGUARD_PRIVATE_KEY=wOEI9rqqbDwnN8/Bpp22sVz48T71vJ4fYmFWujulwUU=    # Replace with your wg client private key
-      # - WIREGUARD_PRESHARED_KEY=xOEI9rqqbDwnN8/Bpp22sVz48T71vJ4fYmFWujulwUU=  # Replaced with your wg pre-shared key
-      # - WIREGUARD_ADDRESSES="10.64.222.21/32"                                 # Replace with wg address
-
-    ## Enable volume if custom VPN_SERVICE_PROVIDER is used
-    # volumes:
-      # - /yourpath/yourconfig.conf:/gluetun/config.conf:ro
-
-    networks:
-      - mynetwork
-    ports:
-      # qbittorrent ports
-      - 5080:5080
-      - 6881:6881
-      - 6881:6881/udp
-      # Transmission ports. Uncomment below if Transmission is used with VPN
-      # - 9091:9091
-      # - 51413:51413
-      # - 51413:51413/udp
-    restart: "unless-stopped"
-  transmission:
-    profiles: ["tx", "stack-1"]
-    container_name: transmission
-    image: lscr.io/linuxserver/transmission:3.00-r5-ls137
-    networks:
-      - mynetwork
-    # network_mode: service:vpn # Uncomment this line if vpn is enabled
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=UTC
-      - USER=admin
-      - PASS=nimdatx
-
-    ## Comment below ports if VPN is enabled.
+    devices:
+      - /dev/net/tun
     ports:
       - 9091:9091
+      - 6881:6881
+      - 6881:6881/udp
+      - 5080:5080
       - 51413:51413
       - 51413:51413/udp
-    volumes:
-      - tx-config:/config
-      - torrent-downloads:/downloads
-      - tx-watch:/watch
-    restart: "unless-stopped"
-
-  ## Default credentials - Username: admin password: adminadmin ##
-  ## Change password after install from UI --> Tools --> Options --> WebUI ##
+    restart: unless-stopped
+    dns:
+      - 1.1.1.1
+    
   qbittorrent:
     container_name: qbittorrent
-    profiles: ["qbt", "stack-2"]
-    image: lscr.io/linuxserver/qbittorrent:4.4.5-r0-ls219
-    # Comment this if vpn is disabled
-    depends_on:
-      - vpn
-    networks:
-      - mynetwork
-    network_mode: service:vpn # Comment this line if vpn is disabled
+    image: lscr.io/linuxserver/qbittorrent:latest
+    depends_on: 
+      - surfshark    
+    network_mode: service:surfshark      
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=UTC
       - WEBUI_PORT=5080
     volumes:
-      - qbittorrent-config:/config
+      - qbt-config:/config
       - torrent-downloads:/downloads
+#    ports:
+#      - 5080:5080
+#      - 6881:6881
+#      - 6881:6881/udp
+    restart: unless-stopped
 
-    ## Uncomment below ports if VPN is disabled.
-    # ports:
-    #   - 5080:5080
-    #   - 6881:6881
-    #   - 6881:6881/udp
-    restart: "unless-stopped"
+  transmission:
+    container_name: transmission
+    image: lscr.io/linuxserver/transmission:latest
+    depends_on: 
+      - surfshark        
+    network_mode: service:surfshark      
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - USER=admin
+      - PASS=nimdatx
+#    ports:
+#      - 9091:9091
+#      - 51413:51413
+#      - 51413:51413/udp
+    volumes:
+      - tx-config:/config
+      - torrent-downloads:/downloads
+      - tx-watch:/watch
+    restart: unless-stopped
+
   radarr:
-    profiles: ["base", "radarr", "stack-1", "stack-2"]
     container_name: radarr
-    image: lscr.io/linuxserver/radarr:4.2.4.6635-ls153
+    image: lscr.io/linuxserver/radarr:latest
+    depends_on: 
+      - transmission
+      - qbittorrent
     networks:
       - mynetwork
     environment:
@@ -119,12 +87,14 @@ services:
     volumes:
       - radarr-config:/config
       - torrent-downloads:/downloads
-    restart: "unless-stopped"
+    restart: unless-stopped
 
   sonarr:
-    profiles: ["base", "sonarr", "stack-1", "stack-2"]
-    image: lscr.io/linuxserver/sonarr:v4-4.0.0.141-ls6
     container_name: sonarr
+    image: lscr.io/linuxserver/sonarr:v4-4.0.0.141-ls6
+    depends_on: 
+      - transmission
+      - qbittorrent
     networks:
       - mynetwork
     environment:
@@ -138,10 +108,31 @@ services:
       - 8989:8989
     restart: unless-stopped
 
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    depends_on: 
+      - transmission
+      - qbittorrent
+    networks:
+      - mynetwork      
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+    volumes:
+      - bazarr-config:/config
+      - torrent-downloads:/data      
+    ports:
+      - 6767:6767
+    restart: unless-stopped    
+
   jackett:
-    profiles: ["jackett", "stack-1"]
     container_name: jackett
-    image: lscr.io/linuxserver/jackett:v0.20.2093-ls77
+    image: lscr.io/linuxserver/jackett:latest
+    depends_on: 
+      - transmission
+      - qbittorrent    
     networks:
       - mynetwork
     environment:
@@ -155,29 +146,8 @@ services:
       - 9117:9117
     restart: unless-stopped
 
-  prowlarr:
-    profiles: ["prowlarr", "stack-2"]
-    container_name: prowlarr
-    image: linuxserver/prowlarr:develop-0.4.6.1969-ls69
-    # Comment this if vpn is disabled
-    depends_on:
-      - vpn
-    network_mode: service:vpn # Comment this line if vpn is disabled
-    networks:
-      - mynetwork
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=UTC
-    volumes:
-      - prowlarr-config:/config
-    ports:
-      - 9696:9696
-    restart: unless-stopped
-
   jellyfin:
-    profiles: ["base", "jelly", "stack-1", "stack-2"]
-    image: lscr.io/linuxserver/jellyfin:10.8.5-1-ls181
+    image: lscr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
     networks:
       - mynetwork
@@ -188,8 +158,6 @@ services:
     volumes:
       - jellyfin-config:/config
       - torrent-downloads:/data
-  # devices:
-   #  - /dev/videoN:/dev/videoN # Mount GPU device 
     ports:
       - 8096:8096
       - 7359:7359/udp
@@ -202,9 +170,9 @@ volumes:
   sonarr-config:
   jackett-config:
   jackett-blackhole:
-  prowlarr-config:
   jellyfin-config:
-  qbittorrent-config:
+  qbt-config:
+  bazarr-config:
   tx-config:
   tx-watch:
 
